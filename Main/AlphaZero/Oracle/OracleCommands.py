@@ -1,0 +1,7 @@
+DUMP_DATA = "DumpData"
+EVAL_NEW_DATA = "Eval"
+DUMP_MOST_VISITED_STATES = "DumpVisitedStates"
+
+
+ORACLE_STATUS_RUNNING = "Running"
+ORACLE_STATUS_FINISHED = "Finished"
