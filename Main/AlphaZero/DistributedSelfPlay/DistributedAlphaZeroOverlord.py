@@ -5,7 +5,8 @@ import multiprocessing as mp
 import os
 
 
-
+# *** To avoid some GPU and memory related problem ***
+# Model creation is performed in an external process that is terminated upon finish
 def _initModelProc(generation, path):
     from Main.AlphaZero import NeuralNetworks
     import keras, os
@@ -57,11 +58,13 @@ def _currentModelAbsPath():
 def startOverlord(trainerPort, remoteWorkerPorts):
     import StartInit
     StartInit.init()
+
     print("Enter what model you wish to use, enter 0 if you wish to generate a new model.")
     modelGeneration = int(input("Model Generation:"))
     _initModel(modelGeneration)
 
-    # Send model and trainer settings to the trainer
+    # Connect to trainer, than send model and trainer settings
+    # It is assumed that the trainer is sitting on the same machine, but this can be changed
     trainerConnection = Connection.Connection(ip='localhost', port=trainerPort, server=True)
     trainerSettings = (Hyperparameters.REPLAY_BUFFER_LENGTH, Hyperparameters.SLIDING_WINDOW_TURNS_TO_FULL)
     trainerConnection.sendMessage(Trainer.STATUS_INIT_MODEL, (_getCurrentModelBytes(), trainerSettings))
@@ -72,15 +75,19 @@ def startOverlord(trainerPort, remoteWorkerPorts):
     MemoryBuffers.CURRENT_MODEL_VERSION = modelGeneration
     modelAsBytes = _getCurrentModelBytes()
 
+    # The main training loop
     try:
         while (True):
+            # Performs a cycle of self-play. Storing all the data in the Memory Buffer as we go along
             SelfPlay.selfPlay(remoteWorkerConnections, modelAsBytes, MemoryBuffers.CURRENT_MODEL_VERSION)
-            # SEND DATA TO trainerConnection
+
+            # Send the current batch of self-play data to trainer
             trainerConnection.sendMessage(Trainer.STATUS_TRAIN_DATA,
                                           (MemoryBuffers.CURRENT_MODEL_VERSION, MemoryBuffers.REPLAY_STATE_BUFFER,
                                            MemoryBuffers.REPLAY_VALUE_BUFFER, MemoryBuffers.REPLAY_POLICY_BUFFER,
                                            MemoryBuffers.REPLAY_WEIGHTS_BUFFER))
-            # WAIT for trainer
+
+            # Wait until the Trainer is finished and read the current version of the network
             _, data = trainerConnection.readMessage()
             modelAsBytes = data[0]
             MemoryBuffers.CURRENT_MODEL_VERSION += 1

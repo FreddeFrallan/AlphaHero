@@ -23,6 +23,7 @@ ROUNDS_BUFFER = []
 REWARD_BUFFER = []
 SAVED_NETWORK_PREDICTIONS_BUFFER = []
 
+# Used to keep track of the size of the replay buffer. Incremented from main overlord loop
 CURRENT_MODEL_VERSION = 0
 
 
@@ -34,6 +35,7 @@ def addLabelsToReplayBuffer(states, valueLabels, policyLabels):
     REPLAY_VALUE_BUFFER.extend(valueLabels)
     REPLAY_POLICY_BUFFER.extend(policyLabels)
 
+    # The size of the buffer can be set to increase over time
     if (CURRENT_MODEL_VERSION + 1 < Hyperparameters.SLIDING_WINDOW_TURNS_TO_FULL):
         maxBufferSize = (1 + CURRENT_MODEL_VERSION) * int(
             Hyperparameters.REPLAY_BUFFER_LENGTH / Hyperparameters.SLIDING_WINDOW_TURNS_TO_FULL)
@@ -42,11 +44,13 @@ def addLabelsToReplayBuffer(states, valueLabels, policyLabels):
 
     maxBufferSize = min(maxBufferSize, Hyperparameters.REPLAY_BUFFER_LENGTH)
 
+    # Remove any data that overflows the buffer
     overLimit = len(REPLAY_STATE_BUFFER) - maxBufferSize
     if (overLimit > 0):
         del REPLAY_STATE_BUFFER[:overLimit]
         del REPLAY_VALUE_BUFFER[:overLimit]
         del REPLAY_POLICY_BUFFER[:overLimit]
+
 
 def getTrainingData():
     sampleSize = min(Hyperparameters.SAMPLES_PER_TRAINING_BATCH, len(REPLAY_STATE_BUFFER))
@@ -62,7 +66,8 @@ def getTrainingData():
 
 
 def getAllTrainingData():
-    return np.array(REPLAY_STATE_BUFFER), np.array(REPLAY_VALUE_BUFFER), np.array(REPLAY_POLICY_BUFFER), np.array(REPLAY_WEIGHTS_BUFFER)
+    return np.array(REPLAY_STATE_BUFFER), np.array(REPLAY_VALUE_BUFFER), np.array(REPLAY_POLICY_BUFFER), np.array(
+        REPLAY_WEIGHTS_BUFFER)
 
 
 class TrainingData:
@@ -119,6 +124,9 @@ def loadOldTrainingDataFromDisk():
     print("Training Data loaded from file, Samples: ", len(REPLAY_STATE_BUFFER))
 
 
+
+#Gets the training data with pre-calculated average of values in matching states
+# TODO: Include weight data in Additonal Tree Sampling
 def getDistinctTrainingData():
     distinct = {}
     for i in range(len(REPLAY_STATE_BUFFER)):
@@ -139,11 +147,12 @@ def getDistinctTrainingData():
         temp = distinct[k]
         distinctStates.append(temp[0])
         distinctValues.append(np.mean(temp[1]))
-        distinctPolices.append(np.mean(temp[2], axis=0))
+        distinctPolices.append(np.mean(temp[2], axis=0)) # Should not this be normalized as well???
 
     return distinctStates, distinctValues, distinctPolices
 
 
+# As the Overlord collects data in its Replay Buffers every Self-Play cycle, it needs to clear it after sending it away
 def clearReplayBuffer():
     global REPLAY_STATE_BUFFER, REPLAY_VALUE_BUFFER, REPLAY_POLICY_BUFFER, REPLAY_WEIGHTS_BUFFER
     REPLAY_STATE_BUFFER.clear()

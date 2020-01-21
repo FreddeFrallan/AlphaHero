@@ -1,6 +1,14 @@
+'''
+TODO: Create a commandline parsers to read flags at startup. Or read settings from file
+
+At startup we ask the user what type of task it should start: Overlord, Trainer or RemoteWorker.
+We then ask it for the required SHH information.
+Finally we ask what GPU the task should use. Where -1 refers to using no gpu.
+'''
+
+
 from Main.AlphaZero.DistributedSelfPlay import SSHTunnel
-from Main.AlphaZero.DistributedSelfPlay.SSHTunnel import HOST_IP_INDEX, HOST_PORT_INDEX, HOST_USERNAME_INDEX, SELF_PORTS
-from Main.AlphaZero.DistributedSelfPlay import FitModel
+from Main.AlphaZero.DistributedSelfPlay.SSHTunnel import SELF_PORTS
 
 trainers = SSHTunnel.TRAINERS
 workers = SSHTunnel.WORKERS
@@ -31,7 +39,7 @@ def _promptWorkerPorts(overlord=True):
     for workerName in workers:
         print("\t" + str(workerName))
 
-    if(overlord):
+    if (overlord):
         print("Choose remote workers. Stop adding workers by typing \"q\"")
     workerPorts = []
 
@@ -40,9 +48,9 @@ def _promptWorkerPorts(overlord=True):
         worker = input(promptMessage)
         if (worker == 'q'):
             break
-        if(str.isdigit(worker)):
+        if (str.isdigit(worker)):
             print("You entered raw port:", int(worker))
-            if(overlord):
+            if (overlord):
                 workerPorts.append(int(worker))
             else:
                 return int(worker), False
@@ -80,7 +88,6 @@ def _isInteger(var):
 
 def startOverlord():
     trainerPort, _ = _promptTrainerPort()
-
     workerPorts, _ = _promptWorkerPorts(True)
 
     from Main.AlphaZero.DistributedSelfPlay import DistributedAlphaZeroOverlord
@@ -90,7 +97,7 @@ def startOverlord():
 def startRemoteWorker():
     port, useSSHTunnel = _promptWorkerPorts(False)
 
-    if (port not in SELF_PORTS and useSSHTunnel):  # and not _isInteger(port)):
+    if (port not in SELF_PORTS and useSSHTunnel):
         host = _promptHost()
         SSHTunnel.createSSHTunnel(host, port)
 
@@ -108,9 +115,9 @@ def startTrainer():
         SSHTunnel.createSSHTunnel(host, port)
 
     gpu = input("Gpu(s): ")
-
     from Main.AlphaZero.DistributedSelfPlay import Trainer
     Trainer.startTrainer(port, gpu)
+
 
 def startLoopingTrainer():
     port, useSSH = _promptTrainerPort()
@@ -120,17 +127,20 @@ def startLoopingTrainer():
         SSHTunnel.createSSHTunnel(host, port)
 
     gpu = input("Gpu(s): ")
-
     from Main.AlphaZero.DistributedSelfPlay import Trainer
     Trainer.loopingTrainer(port, gpu)
 
 
+'''
+Ask for what type of program to execute.
+Remote Trainer & Benchmark Trainer is currently out of sync in the program
+'''
 if (__name__ == "__main__"):
     print("Modes for remote execute:")
     print("\'r\'/\'w\' - Remote Worker")
     print("\'o\'/\'d\' - Remote Overlord ")
-    print("\'t\' - Remote Trainer")
-    print("\'bt\' - Benchmark Trainer")
+    #print("\'t\' - Remote Trainer")
+    #print("\'bt\' - Benchmark Trainer")
     print("\'lt\' - Looping Trainer")
 
     while (True):
@@ -139,9 +149,9 @@ if (__name__ == "__main__"):
             startOverlord()
         if (mode == 'r' or mode == 'w'):
             startRemoteWorker()
-        if (mode == 't'):
-            startTrainer()
-        if (mode == 'bt'):
-            FitModel.benchmark()
+        #if (mode == 't'):
+        #    startTrainer()
+        #if (mode == 'bt'):
+        #    FitModel.benchmark()
         if (mode == 'lt'):
             startLoopingTrainer()

@@ -60,6 +60,7 @@ def _selfPlayProc(overlordConnection, remoteWorkerID, modelAbsPath, MCTSIteratio
             pass
         dataManager.killDataManager()
 
+        # Hackz for memroy & GPU reasons
         del model
         keras.backend.clear_session()
         for i in range(15): gc.collect()
@@ -94,6 +95,7 @@ def startRemoteWorker(port, gpuSettings):
     print("GPU-Settings: {}".format(gpuSettings))
     connection = Connection.Connection(ip, port, False)
 
+
     while (True):
         t1 = time.time()
         msg, data = connection.readMessage()
@@ -106,7 +108,3 @@ def startRemoteWorker(port, gpuSettings):
             remoteWorkerID, kerasModelAsBytes, MCTSIterations, argMaxLimit = data
             print("Starting self-play!")
             _selfPlay(connection, remoteWorkerID, kerasModelAsBytes, MCTSIterations, argMaxLimit, gpuSettings)
-
-
-if (__name__ == '__main__'):
-    startRemoteWorker()

@@ -10,7 +10,6 @@ def createOptimizedGraph(model, session, tf):
     # Possible precision modes: FP32, FP16, INT8
     optimizedGraph = tensorrt.create_inference_graph(frozenGraph, [out.op.name for out in model.outputs],
                                                      max_batch_size=MachineSpecificSettings.OPTIMIZED_GRAPH_MAX_BATCH,
-                                                     # max_workspace_size_bytes=2<<20,
                                                      precision_mode='FP32')
 
     return optimizedGraph, outputs

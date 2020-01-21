@@ -2,7 +2,13 @@ from Main.AlphaZero.DistributedSelfPlay import Constants as C
 
 CONNECTION_ID = 0
 
+'''
+Class used to setup and hold a connection between (Overlord - Remote Worker), and (Overlord - Trainer)
+All the messages are sent over a TCP connection to what is beleived a localhost port.
+The Overlord always acts as the TCP server and the Trainer & Remote Workers acts as clients
 
+If one of workers is on a different machine, a local port most be forwarded using a SSH tunnel.
+'''
 class Connection:
 
     def __init__(self, ip=None, port=None, server=False):
@@ -20,11 +26,9 @@ class Connection:
     def _startClientConnection(self, ip, port):
         import socket
 
-        # print("Starting connection for incoming worker:", port)
         print("Connecting to server on port", str(port) + "...")
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn.connect((ip, port))
-        # print("Worker connected!")
         print("Connected to server on port", str(port) + "!")
 
     def _startServerConnection(self, ip, port):
@@ -34,7 +38,6 @@ class Connection:
         s.bind((ip, port))
         s.listen(1)
         self.conn, addr = s.accept()
-        # print("Connection established to overlord")
         print("Connection established to port", str(port) + "!")
 
     def readMessage(self):
@@ -55,7 +58,6 @@ class Connection:
 
                     # Remove the message from the stored Q
                     self.data = self.data[C.HEADER_MSG_SIZE + fileSize:]
-
                     return pickle.loads(msg)
 
                 deltaSize = fileSize - len(self.data) + C.HEADER_MSG_SIZE

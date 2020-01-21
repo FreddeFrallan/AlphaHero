@@ -30,38 +30,6 @@ def _readModelFromDisk():
     return temp
 
 
-def startTrainer(port, gpuSettings):
-    connection = Connection.Connection(ip='localhost', port=port, server=False)
-    status, data = connection.readMessage()
-    assert status == STATUS_INIT_MODEL
-
-    modelAsBytes, trainerSettings = data
-    modelAbsPath = _writeModelToDiskAsBytes(modelAsBytes)
-    Hyperparameters.REPLAY_BUFFER_LENGTH = trainerSettings[0]
-    Hyperparameters.SLIDING_WINDOW_TURNS_TO_FULL = trainerSettings[1]
-
-    # Used for naming the runtime analasys log
-    if ("Y" in input("Use old training data (Y/N):").upper()):
-        MemoryBuffers.loadOldTrainingDataFromDisk()
-    startTime = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H;%M;%S")
-
-    while (True):
-        status, data = connection.readMessage()
-
-        if (status == STATUS_TRAIN_DATA):
-            t1 = time.time()
-            modelVersion, states, values, policies, weights = data
-            MemoryBuffers.CURRENT_MODEL_VERSION = modelVersion
-            MemoryBuffers.addLabelsToReplayBuffer(states, values, policies)
-            MemoryBuffers.storeTrainingDataToDisk()
-
-            FitModel.fitModel(modelAbsPath, gpuSettings, MemoryBuffers.CURRENT_MODEL_VERSION, startTime)
-            trainedModelAsBytes = _readModelFromDisk()
-
-            print("Training finished:", time.time() - t1)
-            connection.sendMessage("Finished", (trainedModelAsBytes,))
-
-
 def _getLearningRate(generation):
     for a in Hyperparameters.LEARNING_RATE_SCHEDULE:
         cycleNumber, lr = a
@@ -72,7 +40,7 @@ def _getLearningRate(generation):
     return finalLr
 
 
-def loopingTrainer(port, gpuSettings):
+def _init(port):
     connection = Connection.Connection(ip='localhost', port=port, server=False)
     status, data = connection.readMessage()
     assert status == STATUS_INIT_MODEL
@@ -86,8 +54,20 @@ def loopingTrainer(port, gpuSettings):
     if ("Y" in input("Use old training data (Y/N):").upper()):
         MemoryBuffers.loadOldTrainingDataFromDisk()
 
+    return connection, modelAbsPath
+
+
+'''
+The looping trainer is passed Self-Play data from the Overlord
+This data is appended to the replay buffer, where all data contained in the buffer is used in the supervised learning
+Upon finish, the updated network is sent back to the overlord
+'''
+def loopingTrainer(port, gpuSettings):
+    connection, modelAbsPath = _init(port)
+
     import os, StartInit
     StartInit.init()
+
     print("Starting Trainer GPU-Settings: {}".format(gpuSettings))
     os.environ['CUDA_VISIBLE_DEVICES'] = gpuSettings
     from Main.AlphaZero import NeuralNetworks
@@ -97,28 +77,33 @@ def loopingTrainer(port, gpuSettings):
     MachineSpecificSettings.setupHyperparameters()
     singleModel = keras.models.load_model(modelAbsPath)
 
+    # In our experiments we ended up using only a single GPU for training. Since a to big batch-size gave weird results
     if (MachineSpecificSettings.AMOUNT_OF_GPUS > 1):
         trainingModel = NeuralNetworks.createMultipleGPUModel(singleModel)
     else:
         trainingModel = singleModel
 
+    # Training Loop
     while (True):
         status, data = connection.readMessage()
         print("Got msg:", status)
 
-        if (status == STATUS_TRAIN_DATA):
-            t1 = time.time()
+        if (status == STATUS_TRAIN_DATA):  # TODO: Create an informative else statement
+            t1 = time.time()  # Only used for displaying elapsed time to the user
             modelVersion, states, values, policies, weights = data
-            Utils.storeWeightsToFile(weights, "RandomWeights.dat")
+
+            # Setup settings for this training turn
             keras.backend.set_value(trainingModel.optimizer.lr, _getLearningRate(modelVersion))
-
             MemoryBuffers.CURRENT_MODEL_VERSION = modelVersion
-            MemoryBuffers.addLabelsToReplayBuffer(states, values, policies, weights)
+            MemoryBuffers.addLabelsToReplayBuffer(states, values, policies)
 
+            # Get all the data contained in the Replay Buffers. With pre-calculated average of similair states
             inStates, valueLabels, policyLabels = MemoryBuffers.getDistinctTrainingData()
             s = np.array(inStates)
             v = np.array(valueLabels)
             p = np.array(policyLabels)
+
+            # Run the supervised-learning
             dataProcessingTime = time.time() - t1
             print("Data preprocessing finished: {}".format(dataProcessingTime))
             print("Using LR:", keras.backend.get_value(trainingModel.optimizer.lr))
@@ -129,8 +114,8 @@ def loopingTrainer(port, gpuSettings):
 
             singleModel.save(modelAbsPath, overwrite=True)
             singleModel.save(Hyperparameters.MODELS_SAVE_PATH + str(modelVersion + 1))
-
             trainedModelAsBytes = _readModelFromDisk()
+
             print("Training finished:", time.time() - t1)
             connection.sendMessage("Finished", (trainedModelAsBytes,))
 
